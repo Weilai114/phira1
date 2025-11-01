@@ -6,26 +6,41 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
-    - name: Setup Android
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '11'
+        
+    - name: Setup Android SDK
       uses: android-actions/setup-android@v3
       
-    - name: Install Android Platform
+    - name: Install Android Platform and Build Tools
       run: |
-        sdkmanager "platforms;android-30"
-        sdkmanager "build-tools;30.0.3"
+        yes | sdkmanager "platforms;android-30"
+        yes | sdkmanager "build-tools;30.0.3"
+        yes | sdkmanager "platform-tools"
         
-    - name: Create debug keystore
+    - name: Create debug keystore in correct location
       run: |
-        keytool -genkey -v -keystore phira/debug.keystore -alias androiddebugkey -storepass android -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+        cd phira
+        keytool -genkey -v -keystore debug.keystore -alias androiddebugkey -storepass android -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
         
-    - name: Build APK
+    - name: Setup Rust
       run: |
         rustup target add aarch64-linux-android
-        cargo install cargo-apk
-        cargo apk build -p phira --release
+        cargo install cargo-apk --version 0.9.7
+        
+    - name: Build APK with environment setup
+      run: |
+        export ANDROID_SDK_ROOT=$ANDROID_HOME
+        export ANDROID_NDK_HOME=$ANDROID_NDK_ROOT
+        cd phira
+        cargo apk build --release
         
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
-        name: phira-mod
+        name: phira-mod-apk
         path: target/android-artifacts/release/apk/*.apk
+        retention-days: 7
