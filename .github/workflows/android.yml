@@ -50,9 +50,13 @@ jobs:
         export ANDROID_SDK_ROOT=$ANDROID_HOME
         cargo apk build --release
         
+    - name: Find APK file
+      run: |
+        find . -name "*.apk" -type f
+        
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
         name: phira-mod-apk
-        path: target/android-artifacts/release/apk/*.apk
+        path: phira/target/android-artifacts/release/apk/*.apk
         retention-days: 7
