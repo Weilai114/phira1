@@ -50,13 +50,17 @@ jobs:
         export ANDROID_SDK_ROOT=$ANDROID_HOME
         cargo apk build --release
         
-    - name: Find APK file
+    - name: Find and list APK files
       run: |
-        find . -name "*.apk" -type f
+        find . -name "*.apk" -type f | head -20
+        echo "=== Checking common paths ==="
+        ls -la phira/target/ 2>/dev/null || echo "No phira/target/"
+        ls -la target/ 2>/dev/null || echo "No target/"
+        ls -la . 2>/dev/null || echo "No current dir"
         
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
         name: phira-mod-apk
-        path: phira/target/android-artifacts/release/apk/*.apk
+        path: "**/*.apk"
         retention-days: 7
