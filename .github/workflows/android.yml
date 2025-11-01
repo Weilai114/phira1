@@ -5,17 +5,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-    - name: Setup Rust
-      uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable
-        target: aarch64-linux-android
-    - name: Install cargo-apk
-      run: cargo install cargo-apk
     - name: Build APK
-      run: cargo apk build -p phira --release
-    - name: Upload APK
-      uses: actions/upload-artifact@v3
+      run: |
+        rustup target add aarch64-linux-android
+        cargo install cargo-apk
+        cargo apk build -p phira --release
+    - name: Upload APK  
+      uses: actions/upload-artifact@v4
       with:
         name: phira-mod
         path: target/android-artifacts/release/apk/*.apk
