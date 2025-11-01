@@ -17,13 +17,13 @@ use std::{cell::RefCell, collections::HashMap, num::FpCategory};
 use tracing::debug;
 
 pub const FLICK_SPEED_THRESHOLD: f32 = 0.8;
-pub const LIMIT_PERFECT: f32 = 0.08;
-pub const LIMIT_GOOD: f32 = 0.16;
+pub const LIMIT_PERFECT: f32 = 0.04;
+pub const LIMIT_GOOD: f32 = 0.8;
 pub const LIMIT_BAD: f32 = 0.22;
 pub const UP_TOLERANCE: f32 = 0.05;
 pub const DIST_FACTOR: f32 = 0.2;
 
-const EARLY_OFFSET: f32 = 0.07;
+const EARLY_OFFSET: f32 = 0.00;
 
 #[derive(Debug, Clone)]
 pub enum HitSound {
@@ -83,15 +83,6 @@ fn get_uptime() -> f64 {
         let process_info: ObjcId = msg_send![class!(NSProcessInfo), processInfo];
         msg_send![process_info, systemUptime]
     }
-}
-
-#[cfg(target_os = "windows")]
-fn get_uptime() -> f64 {
-    use std::time::SystemTime;
-    let start = SystemTime::UNIX_EPOCH;
-    let now = SystemTime::now();
-    let duration = now.duration_since(start).expect("Time went backwards");
-    duration.as_secs() as f64 + duration.subsec_nanos() as f64 * 1e-9
 }
 
 pub struct FlickTracker {
@@ -375,6 +366,7 @@ impl Judge {
         const X_DIFF_MAX: f32 = 0.21 / (16. / 9.) * 2.;
         let spd = res.config.speed;
 
+        #[cfg(not(target_os = "windows"))]
         let uptime = get_uptime();
 
         let t = res.time;
@@ -468,7 +460,14 @@ impl Judge {
                 it.time = if it.time.is_infinite() {
                     f64::NEG_INFINITY
                 } else {
-                    t as f64 - (uptime - it.time) * spd as f64
+                    #[cfg(target_os = "windows")]
+                    {
+                        it.time
+                    }
+                    #[cfg(not(target_os = "windows"))]
+                    {
+                        t as f64 - (uptime - it.time) * spd as f64
+                    }
                 };
                 it
             })
