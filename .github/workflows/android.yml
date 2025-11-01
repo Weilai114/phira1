@@ -6,35 +6,35 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
-    - name: Setup Java
+    - name: Setup Java 17
       uses: actions/setup-java@v4
       with:
         distribution: 'temurin'
-        java-version: '11'
+        java-version: '17'
         
-    - name: Setup Android SDK
+    - name: Setup Android SDK and NDK
       uses: android-actions/setup-android@v3
       
-    - name: Install Android Platform and Build Tools
+    - name: Accept Android Licenses
       run: |
-        yes | sdkmanager "platforms;android-30"
-        yes | sdkmanager "build-tools;30.0.3"
-        yes | sdkmanager "platform-tools"
+        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
         
-    - name: Create debug keystore in correct location
+    - name: Install Android Platform
+      run: |
+        $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-33" "build-tools;33.0.0" "platform-tools"
+        
+    - name: Create debug keystore
       run: |
         cd phira
         keytool -genkey -v -keystore debug.keystore -alias androiddebugkey -storepass android -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
         
-    - name: Setup Rust
+    - name: Setup Rust and Android target
       run: |
         rustup target add aarch64-linux-android
-        cargo install cargo-apk --version 0.9.7
+        cargo install cargo-apk
         
-    - name: Build APK with environment setup
+    - name: Build APK
       run: |
-        export ANDROID_SDK_ROOT=$ANDROID_HOME
-        export ANDROID_NDK_HOME=$ANDROID_NDK_ROOT
         cd phira
         cargo apk build --release
         
