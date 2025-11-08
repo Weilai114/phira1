@@ -10,8 +10,8 @@ on:
 env:
   CARGO_TERM_COLOR: always
   ANDROID_HOME: ${{ github.workspace }}/android-sdk
-  ANDROID_NDK_HOME: ${{ github.workspace }}/android-ndk
-  ANDROID_NDK_ROOT: ${{ github.workspace }}/android-ndk
+  ANDROID_NDK_HOME: ${{ github.workspace }}/android-sdk/ndk/25.1.8937393
+  ANDROID_NDK_ROOT: ${{ github.workspace }}/android-sdk/ndk/25.1.8937393
 
 jobs:
   Build:
@@ -46,21 +46,22 @@ jobs:
     - name: Setup Android SDK
       run: |
         # 创建目录结构
-        mkdir -p $ANDROID_HOME/cmdline-tools/latest
+        mkdir -p $ANDROID_HOME
         
         # 下载命令行工具
         wget -q https://dl.google.com/android/repository/commandlinetools-linux-8512546_latest.zip
         
-        # 直接解压到正确的位置
-        unzip -q commandlinetools-linux-8512546_latest.zip -d $ANDROID_HOME/cmdline-tools/latest/
+        # 解压命令行工具
+        unzip -q commandlinetools-linux-8512546_latest.zip -d $ANDROID_HOME/
         
-        # 移动内容到正确位置（如果需要）
-        mv $ANDROID_HOME/cmdline-tools/latest/cmdline-tools/* $ANDROID_HOME/cmdline-tools/latest/
-        rm -rf $ANDROID_HOME/cmdline-tools/latest/cmdline-tools
+        # 移动并重命名目录
+        mv $ANDROID_HOME/cmdline-tools $ANDROID_HOME/temp-tools
+        mkdir -p $ANDROID_HOME/cmdline-tools
+        mv $ANDROID_HOME/temp-tools $ANDROID_HOME/cmdline-tools/latest
+        rm -rf $ANDROID_HOME/temp-tools
         
-        # 验证安装
-        echo "=== SDK Manager List ==="
-        $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --list --sdk_root=$ANDROID_HOME || true
+        # 设置可执行权限
+        chmod +x $ANDROID_HOME/cmdline-tools/latest/bin/*
         
         # 安装必要的组件
         yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_HOME \
@@ -69,24 +70,17 @@ jobs:
           "platforms;android-35" \
           "ndk;25.1.8937393"
 
-    - name: Setup Android NDK (使用 SDK Manager 安装的版本)
-      run: |
-        # 设置使用 SDK Manager 安装的 NDK
-        SDK_NDK_PATH="$ANDROID_HOME/ndk/25.1.8937393"
-        echo "ANDROID_NDK_HOME=$SDK_NDK_PATH" >> $GITHUB_ENV
-        echo "ANDROID_NDK_ROOT=$SDK_NDK_PATH" >> $GITHUB_ENV
-        echo "NDK_HOME=$SDK_NDK_PATH" >> $GITHUB_ENV
-        
-        # 验证 NDK 安装
-        echo "=== NDK Contents ==="
-        ls -la $SDK_NDK_PATH
-
     - name: Setup Rust
-      uses: actions-rs/toolchain@v1
+      uses: dtolnay/rust-toolchain@stable
       with:
-        toolchain: stable
         targets: aarch64-linux-android
-        override: true
+
+    - name: Verify Rust targets
+      run: |
+        echo "=== Installed Rust targets ==="
+        rustup target list --installed
+        echo "=== Adding Android target if missing ==="
+        rustup target add aarch64-linux-android
 
     - name: Install cargo-ndk
       run: |
@@ -104,12 +98,18 @@ jobs:
         ar = "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar"
         EOF
 
+        # 验证 NDK 工具链存在
+        echo "=== Checking NDK tools ==="
+        ls -la "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/" | grep aarch64
+
     - name: Build for Android
       run: |
         cd phira
         echo "=== Starting Android Build ==="
         echo "ANDROID_NDK_HOME: $ANDROID_NDK_HOME"
         echo "ANDROID_HOME: $ANDROID_HOME"
+        echo "Rust targets:"
+        rustup target list --installed
         
         # 使用 cargo-ndk 构建
         cargo ndk -t arm64-v8a -p 35 build --release --verbose
@@ -119,9 +119,10 @@ jobs:
         AR_aarch64_linux_android: "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar"
 
     - name: Upload Artifact
+      if: success()
       uses: actions/upload-artifact@v4
       with:
         name: android-build
         path: |
-          target/aarch64-linux-android/release/libphira.so
+          phira/target/aarch64-linux-android/release/libphira.so
         retention-days: 7
