@@ -96,7 +96,6 @@ pub struct FlickTracker {
 
 impl FlickTracker {
     pub fn new(_dpi: u32, time: f32, point: Point) -> Self {
-        // TODO maybe a better approach?
         let dpi = 275;
         Self {
             threshold: FLICK_SPEED_THRESHOLD * dpi as f32 / 386.,
@@ -120,13 +119,6 @@ impl FlickTracker {
             if self.stopped && !self.flicked {
                 self.flicked = delta.magnitude() / dt >= self.threshold * 2.;
             }
-            // if speed < self.threshold || self.stopped {
-            // self.stopped = delta.magnitude() / dt < self.threshold * 5.;
-            // self.flicked = self.threshold <= speed;
-            // if self.flicked {
-            // warn!("new flick!");
-            // }
-            // }
         }
         self.last_delta = Some(delta.normalize());
         self.last_time = time;
@@ -138,7 +130,7 @@ pub enum JudgeStatus {
     NotJudged,
     PreJudge,
     Judged,
-    Hold(bool, f32, f32, bool, f32), // perfect, at, diff, pre-judge, up-time
+    Hold(bool, f32, f32, bool, f32),
 }
 
 #[repr(u8)]
@@ -252,8 +244,6 @@ use inner::*;
 
 #[repr(C)]
 pub struct Judge {
-    // notes of each line in order
-    // LinkedList::drain_filter is unstable...
     pub notes: Vec<(Vec<u32>, usize)>,
     pub trackers: HashMap<u64, FlickTracker>,
     pub last_time: f32,
@@ -370,7 +360,6 @@ impl Judge {
         let uptime = get_uptime();
 
         let t = res.time;
-        // TODO optimize
         let mut touches: HashMap<u64, Touch> = {
             let mut touches = touches();
             let btn = MouseButton::Left;
@@ -472,7 +461,6 @@ impl Judge {
                 it
             })
             .collect();
-        // pos[line][touch]
         let mut pos = Vec::<Vec<Option<Point>>>::with_capacity(chart.lines.len());
         for id in 0..pos.capacity() {
             chart.lines[id].object.set_time(t);
@@ -503,7 +491,8 @@ impl Judge {
             }
         };
         let mut judgements = Vec::new();
-        // clicks & flicks
+        let mut protected_notes = Vec::new();
+        
         for (id, touch) in touches.iter().enumerate() {
             let click = touch.phase == TouchPhase::Started;
             let flick =
@@ -513,60 +502,101 @@ impl Judge {
             }
             let t = time_of(touch);
             let mut closest = (None, X_DIFF_MAX, LIMIT_BAD, LIMIT_BAD + (X_DIFF_MAX / NOTE_WIDTH_RATIO_BASE - 1.).max(0.) * DIST_FACTOR);
+            
             for (line_id, ((line, pos), (idx, st))) in chart.lines.iter_mut().zip(pos.iter()).zip(self.notes.iter_mut()).enumerate() {
                 let Some(pos) = pos[id] else {
                     continue;
                 };
-                for id in &idx[*st..] {
-                    let note = &mut line.notes[*id as usize];
+                
+                let mut candidates = Vec::new();
+                for note_id in &idx[*st..] {
+                    let note = &mut line.notes[*note_id as usize];
                     if !matches!(note.judge, JudgeStatus::NotJudged | JudgeStatus::PreJudge) {
                         continue;
                     }
                     if !click && matches!(note.kind, NoteKind::Click | NoteKind::Hold { .. }) {
                         continue;
                     }
-                    let dt = (note.time - t) / spd;
-                    if dt >= closest.3 {
-                        break;
+                    
+                    let raw_dt = note.time - t;
+                    let dt = raw_dt / spd;
+                    
+                    if dt < -LIMIT_BAD {
+                        continue;
                     }
-                    let dt = if dt < 0. { (dt + EARLY_OFFSET).min(0.).abs() } else { dt };
+                    
+                    let dt_abs = if dt < 0. { (dt + EARLY_OFFSET).min(0.).abs() } else { dt };
                     let x = &mut note.object.translation.0;
                     x.set_time(t);
                     let dist = (x.now() - pos.x).abs();
                     if dist > X_DIFF_MAX {
                         continue;
                     }
-                    if dt
-                        > if matches!(note.kind, NoteKind::Click) {
-                            LIMIT_BAD - LIMIT_PERFECT * (dist - 0.9).max(0.)
-                        } else {
-                            LIMIT_GOOD
-                        }
-                    {
+                    
+                    let time_window = if matches!(note.kind, NoteKind::Click) {
+                        LIMIT_BAD - LIMIT_PERFECT * (dist - 0.9).max(0.)
+                    } else {
+                        LIMIT_GOOD
+                    };
+                    
+                    if dt_abs > time_window {
                         continue;
                     }
-                    let dt = if matches!(note.kind, NoteKind::Flick | NoteKind::Drag) {
-                        dt + 0.22
+                    
+                    let base_dt = if matches!(note.kind, NoteKind::Flick | NoteKind::Drag) {
+                        dt_abs + 0.22
                     } else {
-                        dt
+                        dt_abs
                     };
-                    let key = dt + (dist / NOTE_WIDTH_RATIO_BASE - 1.).max(0.) * DIST_FACTOR;
-                    if key < closest.3 {
-                        closest = (Some((line_id, *id)), dist, dt, key);
+                    
+                    let key = base_dt + (dist / NOTE_WIDTH_RATIO_BASE - 1.).max(0.) * DIST_FACTOR;
+                    
+                    let priority = if dt < 0. { 0 } else { 1 };
+                    
+                    candidates.push((line_id, *note_id, dt, key, priority, dist, dt_abs, raw_dt));
+                }
+                
+                candidates.sort_by(|a, b| {
+                    a.4.cmp(&b.4)
+                        .then(a.3.partial_cmp(&b.3).unwrap_or(std::cmp::Ordering::Equal))
+                });
+                
+                if let Some(&(candidate_line_id, candidate_id, candidate_dt, candidate_key, _, candidate_dist, candidate_dt_abs, candidate_raw_dt)) = candidates.first() {
+                    if candidate_key < closest.3 {
+                        closest = (Some((candidate_line_id, candidate_id)), candidate_dist, candidate_dt_abs, candidate_key);
+                        
+                        let note = &chart.lines[candidate_line_id].notes[candidate_id as usize];
+                        if matches!(note.kind, NoteKind::Drag | NoteKind::Flick) {
+                            for (protect_line_id, (protect_line, (protect_idx, protect_st))) in chart.lines.iter().zip(self.notes.iter()).enumerate() {
+                                for protect_id in &protect_idx[*protect_st..] {
+                                    let protect_note = &protect_line.notes[*protect_id as usize];
+                                    if !matches!(protect_note.judge, JudgeStatus::NotJudged) {
+                                        continue;
+                                    }
+                                    if !matches!(protect_note.kind, NoteKind::Click | NoteKind::Hold { .. }) {
+                                        continue;
+                                    }
+                                    
+                                    let protect_dt = (protect_note.time - t).abs();
+                                    if protect_dt <= 0.08 && protect_note.time > note.time {
+                                        protected_notes.push((protect_line_id, *protect_id));
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
+            
             if let (Some((line_id, id)), _, dt, _) = closest {
                 let line = &mut chart.lines[line_id];
                 if matches!(line.notes[id as usize].kind, NoteKind::Drag) {
-                    debug!("reject by drag");
                     continue;
                 }
                 if click {
-                    // click & hold
                     let note = &mut line.notes[id as usize];
                     if matches!(note.kind, NoteKind::Flick) {
-                        continue; // to next loop
+                        continue;
                     }
                     if dt <= LIMIT_GOOD || matches!(note.kind, NoteKind::Hold { .. }) {
                         match note.kind {
@@ -582,15 +612,12 @@ impl Judge {
                             _ => unreachable!(),
                         };
                     } else {
-                        // prevent extra judgements
                         if matches!(note.judge, JudgeStatus::NotJudged) {
-                            // keep the note after bad judgement
                             line.notes[id as usize].judge = JudgeStatus::PreJudge;
                             judgements.push((Judgement::Bad, line_id, id, None));
                         }
                     }
                 } else {
-                    // flick
                     line.notes[id as usize].judge = JudgeStatus::PreJudge;
                     if let Some(tracker) = self.trackers.get_mut(&touch.id) {
                         tracker.flicked = false;
@@ -598,8 +625,15 @@ impl Judge {
                 }
             }
         }
+        
+        for (protect_line_id, protect_id) in protected_notes {
+            let note = &mut chart.lines[protect_line_id].notes[protect_id as usize];
+            if matches!(note.judge, JudgeStatus::NotJudged) {
+                note.judge = JudgeStatus::PreJudge;
+            }
+        }
+        
         for _ in 0..keys_down {
-            // find the earliest not judged click / hold note
             if let Some((line_id, id)) = chart
                 .lines
                 .iter()
@@ -648,6 +682,7 @@ impl Judge {
                 break;
             }
         }
+        
         for (line_id, ((line, pos), (idx, st))) in chart.lines.iter_mut().zip(pos.iter()).zip(self.notes.iter()).enumerate() {
             line.object.set_time(t);
             for id in &idx[*st..] {
@@ -677,7 +712,6 @@ impl Judge {
                 if !matches!(note.judge, JudgeStatus::NotJudged) {
                     continue;
                 }
-                // process miss
                 let dt = (t - note.time) / spd;
                 if dt > LIMIT_BAD {
                     note.judge = JudgeStatus::Judged;
@@ -706,7 +740,7 @@ impl Judge {
                 }
             }
         }
-        // process pre-judge
+        
         for (line_id, (line, (idx, st))) in chart.lines.iter_mut().zip(self.notes.iter()).enumerate() {
             line.object.set_time(t);
             for id in &idx[*st..] {
@@ -720,7 +754,6 @@ impl Judge {
                         }
                     }
                 }
-                // TODO adjust
                 let ghost_t = t + LIMIT_GOOD;
                 if matches!(note.kind, NoteKind::Click) {
                     if ghost_t < note.time {
@@ -742,6 +775,7 @@ impl Judge {
                 }
             }
         }
+        
         for (judgement, line_id, id, diff) in judgements {
             let line = &mut chart.lines[line_id];
             let note = &mut line.notes[id as usize];
