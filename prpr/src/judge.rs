@@ -363,7 +363,7 @@ impl Judge {
             self.auto_play_update(res, chart);
             return;
         }
-        const X_DIFF_MAX: f32 = 0.21 / (16. / 9.) * 2.2.;
+        const X_DIFF_MAX: f32 = 0.21 / (16. / 9.) * 2.;
         let spd = res.config.speed;
 
         #[cfg(not(target_os = "windows"))]
@@ -529,6 +529,7 @@ impl Judge {
                     if dt >= closest.3 {
                         break;
                     }
+                    let dt = if dt < 0. { (dt + EARLY_OFFSET).min(0.).abs() } else { dt };
                     let x = &mut note.object.translation.0;
                     x.set_time(t);
                     let dist = (x.now() - pos.x).abs();
