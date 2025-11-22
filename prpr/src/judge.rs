@@ -529,7 +529,6 @@ impl Judge {
                     if dt >= closest.3 {
                         break;
                     }
-                    let dt = (note.time - t) / spd;
                     let x = &mut note.object.translation.0;
                     x.set_time(t);
                     let dist = (x.now() - pos.x).abs();
