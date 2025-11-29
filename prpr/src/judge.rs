@@ -529,7 +529,8 @@ impl Judge {
                     //     }
                     // }
                     if matches!(note.judge, JudgeStatus::Judged) {
-                    continue;
+                        continue;
+                    }
                     let dt = (note.time - t) / spd;
                     if dt >= closest.3 {
                         break;
