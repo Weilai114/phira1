@@ -10,7 +10,7 @@ use prpr::{
 };
 use std::path::Path;
 
-#[must_use = "futures do nothing unless you `.await` or poll them"]
+#[must_use]
 pub fn launch_task(id: i32, players: Vec<UserInfo>) -> Result<LocalTask<Result<(GameScene, Vec<PlayerView>)>>> {
     let mut fs = fs::fs_from_file(Path::new(&format!("{}/{id}", dir::downloaded_charts()?)))?;
     Ok(Some(Box::pin(async move {
@@ -34,7 +34,7 @@ pub fn launch_task(id: i32, players: Vec<UserInfo>) -> Result<LocalTask<Result<(
                 Ok(PlayerView::new(
                     player,
                     chart,
-                    ParticleEmitter::new(&game_scene.res.res_pack, game_scene.res.config.note_scale, game_scene.res.res_pack.info.hide_particles)?,
+                    ParticleEmitter::new(&game_scene.res.res_pack, game_scene.res.config.note_scale)?,
                 ))
             })
             .collect::<Result<_>>()?;
