@@ -24,7 +24,7 @@ pub const LIMIT_BAD: f32 = 0.18;
 pub const UP_TOLERANCE: f32 = 0.05;
 pub const DIST_FACTOR: f32 = 0.2;
 const LATE_OFFSET: f32 = 0.13;
-const TAP_JUDGE_OFFSET: f32 = 0.0;  // tap判定偏移量，默认0ms，可以抵消Phira的奇怪判定区间延后，暂时没啥用
+const TAP_JUDGE_OFFSET: f32 = 0.005;  // tap判定偏移量，默认5ms，可以抵消Phira的奇怪判定区间延后，暂时没啥用
 
 #[derive(Debug, Clone)]
 pub enum HitSound {
