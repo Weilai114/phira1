@@ -18,13 +18,13 @@ use std::{cell::RefCell, collections::HashMap, num::FpCategory};
 use tracing::debug;
 
 pub const FLICK_SPEED_THRESHOLD: f32 = 0.8;
-pub const LIMIT_PERFECT: f32 = 0.05;
-pub const LIMIT_GOOD: f32 = 0.075;
+pub const LIMIT_PERFECT: f32 = 0.08;
+pub const LIMIT_GOOD: f32 = 0.0016;
 pub const LIMIT_BAD: f32 = 0.18;
 pub const UP_TOLERANCE: f32 = 0.05;
 pub const DIST_FACTOR: f32 = 0.2;
 const LATE_OFFSET: f32 = 0.13;
-const TAP_JUDGE_OFFSET: f32 = 0.005;  // tap判定偏移量，默认5ms，可以抵消Phira的奇怪判定区间延后，暂时没啥用
+const TAP_JUDGE_OFFSET: f32 = 0.005;  // tap判定偏移量，默认5ms，可以抵消Phira的奇怪判定区间延后
 
 #[derive(Debug, Clone)]
 pub enum HitSound {
